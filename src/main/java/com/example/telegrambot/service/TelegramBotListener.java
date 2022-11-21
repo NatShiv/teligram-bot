@@ -2,10 +2,9 @@ package com.example.telegrambot.service;
 
 
 import com.example.telegrambot.configuration.TelegramBotConfiguration;
-import com.example.telegrambot.entity.NotificationMessage;
-import com.example.telegrambot.repositiry.NotificationMessageRepository;
+import com.example.telegrambot.entity.Notification;
+import com.example.telegrambot.repositiry.NotificationRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -29,9 +28,9 @@ public class TelegramBotListener extends TelegramLongPollingBot {
 
     LocalDateTime dateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES);
     private final TelegramBotConfiguration configuration;
-    private final NotificationMessageRepository notificationMessageRepository;
+    private final NotificationRepository notificationMessageRepository;
 
-    public TelegramBotListener(TelegramBotConfiguration configuration, NotificationMessageRepository notificationMessageRepository) {
+    public TelegramBotListener(TelegramBotConfiguration configuration, NotificationRepository notificationMessageRepository) {
         this.configuration = configuration;
         this.notificationMessageRepository = notificationMessageRepository;
     }
@@ -86,9 +85,9 @@ public class TelegramBotListener extends TelegramLongPollingBot {
 
     public void getData(long chatId) {
         log.debug("вызван блок для отправки всех имеющихся у пользователя запланированныз задач");
-        List<NotificationMessage> messages = new ArrayList<>(notificationMessageRepository.findAllByUserChatId(chatId));
+        List<Notification> messages = new ArrayList<>(notificationMessageRepository.findAllByUserChatId(chatId));
         if (!messages.isEmpty()) {
-            for (NotificationMessage n : messages) {
+            for (Notification n : messages) {
                 sendMessage(n.getUserChatId(), n.getMessageNotification());
             }
         }
@@ -116,7 +115,7 @@ public class TelegramBotListener extends TelegramLongPollingBot {
         log.debug("вызван блок обработки сообщений не содержащих команд бота");
         String text = message.getText();
         Long chatId = message.getChatId();
-
+        long userChatId = message.getFrom().getId();
         Pattern patternForNotification = Pattern.compile("([0-9\\.\\:\\s]{16})(\\s)([\\W+]+)");
         if (patternForNotification.matcher(text).find()) {
             log.debug("вызван блок когда сообщение соответствует паттерну задачи для перехвата");
@@ -128,11 +127,11 @@ public class TelegramBotListener extends TelegramLongPollingBot {
             }
             String notification = text.substring(16 + 1);
 
-            if (notificationMessageRepository.findByDataAndNotification(data, notification).isPresent()) {
-                sendMessage(chatId, "Такое напоминание уже существует");
+            if (notificationMessageRepository.findByDataAndNotification(userChatId, data, notification).isPresent()) {
+                sendMessage(userChatId, "Такое напоминание уже существует");
             } else {
                 log.debug("вызван блок сохранения новой ззадачи в базу");
-                notificationMessageRepository.save(new NotificationMessage(data, text, chatId));
+                notificationMessageRepository.save(new Notification(data, text, userChatId));
             }
             if (data.compareTo(dateTime) < 0) {
                 log.debug("вызван блок изменения даты для отбора сообщений для метода по расписанию");
@@ -146,19 +145,22 @@ public class TelegramBotListener extends TelegramLongPollingBot {
     @Scheduled(cron = " 0 0/1 * * * *")
     public void sendNotification() {
         log.debug("Вызван метод по расписанию. Проверяюший время напоминаний в базе.");
+
         while (dateTime.compareTo(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)) <= 0) {
 
-            List<NotificationMessage> messages = new ArrayList<>(notificationMessageRepository.findAllByDataNotification(dateTime));
+            List<Notification> messages = new ArrayList<>(notificationMessageRepository.findAllByDataNotification(dateTime));
 
             if (!messages.isEmpty()) {
+
                 log.debug("Вызван блок кода для передачи сообщений выбранных из базы");
-                for (NotificationMessage n : messages) {
+                for (Notification n : messages) {
                     sendMessage(n.getUserChatId(), n.getMessageNotification());
                     notificationMessageRepository.delete(n);
                 }
             }
-            PageRequest pageRequest = PageRequest.of(0, 1);
-            dateTime = notificationMessageRepository.findMinData(pageRequest).orElseGet(() -> LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES).plusDays(1));
+            dateTime = notificationMessageRepository.findMinData()
+                    .orElseGet(() -> LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES).plusDays(1));
+
         }
     }
 }

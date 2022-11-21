@@ -2,11 +2,10 @@
 
 --changeset Natali:19.11.2022-001.create_table
 
-CREATE SEQUENCE IF NOT EXISTS hibernate_sequence START WITH 1 INCREMENT BY 1;
 
 CREATE TABLE notification
 (
-    id                   BIGINT NOT NULL,
+    id                   BIGSERIAL NOT NULL,
     message_notification TEXT not null ,
     data_notification    TIMESTAMP WITHOUT TIME ZONE,
     user_chat_id         BIGINT,
