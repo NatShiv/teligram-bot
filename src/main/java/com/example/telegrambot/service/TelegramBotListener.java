@@ -1,6 +1,5 @@
 package com.example.telegrambot.service;
 
-
 import com.example.telegrambot.configuration.TelegramBotConfiguration;
 import com.example.telegrambot.entity.Notification;
 import com.example.telegrambot.repositiry.NotificationRepository;
@@ -17,7 +16,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -25,8 +23,11 @@ import java.util.regex.Pattern;
 @Component
 @Slf4j
 public class TelegramBotListener extends TelegramLongPollingBot {
+    private static final Pattern patternForNotification = Pattern.compile("([0-9\\.\\:\\s]{16})(\\s)([\\W+]+)");
+    private static final String patternData = "dd.MM.yyyy HH:mm";
+    private static LocalDateTime dateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES);
 
-    LocalDateTime dateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES);
+
     private final TelegramBotConfiguration configuration;
     private final NotificationRepository notificationMessageRepository;
 
@@ -85,11 +86,10 @@ public class TelegramBotListener extends TelegramLongPollingBot {
 
     public void getData(long chatId) {
         log.debug("вызван блок для отправки всех имеющихся у пользователя запланированныз задач");
-        List<Notification> messages = new ArrayList<>(notificationMessageRepository.findAllByUserChatId(chatId));
-        if (!messages.isEmpty()) {
-            for (Notification n : messages) {
-                sendMessage(n.getUserChatId(), n.getMessageNotification());
-            }
+        List<Notification> messages = notificationMessageRepository.findAllByUserChatId(chatId);
+
+        for (Notification n : messages) {
+            sendMessage(n.getUserChatId(), n.getMessageNotification());
         }
     }
 
@@ -116,55 +116,49 @@ public class TelegramBotListener extends TelegramLongPollingBot {
         String text = message.getText();
         Long chatId = message.getChatId();
         long userChatId = message.getFrom().getId();
-        Pattern patternForNotification = Pattern.compile("([0-9\\.\\:\\s]{16})(\\s)([\\W+]+)");
+
         if (patternForNotification.matcher(text).find()) {
-            log.debug("вызван блок когда сообщение соответствует паттерну задачи для перехвата");
-            LocalDateTime data = LocalDateTime.parse(text.substring(0, 16), DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")).truncatedTo(ChronoUnit.MINUTES);
-            if (data.compareTo(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)) <= 0) {
-                log.debug("вызван блок когда переданное время задачи меньше текущего");
-                sendMessage(chatId, "Время напоминания не может быть меньше текущего");
-                return;
-            }
-            String notification = text.substring(16 + 1);
-
-            if (notificationMessageRepository.findByDataAndNotification(userChatId, data, notification).isPresent()) {
-                sendMessage(userChatId, "Такое напоминание уже существует");
-            } else {
-                log.debug("вызван блок сохранения новой ззадачи в базу");
-                notificationMessageRepository.save(new Notification(data, text, userChatId));
-            }
-            if (data.compareTo(dateTime) < 0) {
-                log.debug("вызван блок изменения даты для отбора сообщений для метода по расписанию");
-                dateTime = data;
-            }
-
+            notificationSave(chatId, userChatId, text);
         }
     }
 
-
     @Scheduled(cron = " 0 0/1 * * * *")
-    public void sendNotification() {
+    private void sendNotification() {
         log.debug("Вызван метод по расписанию. Проверяюший время напоминаний в базе.");
-
         while (dateTime.compareTo(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)) <= 0) {
+            List<Notification> messages = (notificationMessageRepository.findAllByDataNotification(dateTime));
 
-            List<Notification> messages = new ArrayList<>(notificationMessageRepository.findAllByDataNotification(dateTime));
-
-            if (!messages.isEmpty()) {
-
-                log.debug("Вызван блок кода для передачи сообщений выбранных из базы");
-                for (Notification n : messages) {
-                    sendMessage(n.getUserChatId(), n.getMessageNotification());
-                    notificationMessageRepository.delete(n);
-                }
+            for (Notification n : messages) {
+                sendMessage(n.getUserChatId(), n.getMessageNotification());
+                notificationMessageRepository.delete(n);
             }
+
             dateTime = notificationMessageRepository.findMinData()
                     .orElseGet(() -> LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES).plusDays(1));
+        }
+    }
 
+    private void notificationSave(Long chatId, long userChatId, String text) {
+        log.debug("вызван блок когда сообщение соответствует паттерну задачи для перехвата");
+        LocalDateTime data = LocalDateTime.parse(text.substring(0, 16), DateTimeFormatter.ofPattern(patternData)).truncatedTo(ChronoUnit.MINUTES);
+        if (data.compareTo(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)) <= 0) {
+            log.debug("вызван блок когда переданное время задачи меньше текущего");
+            sendMessage(chatId, "Время напоминания не может быть меньше текущего");
+            return;
+        }
+        String notification = text.substring(16 + 1);
+        if (notificationMessageRepository.findByDataAndNotification(userChatId, data, notification).isPresent()) {
+            sendMessage(userChatId, "Такое напоминание уже существует");
+        } else {
+            log.debug("вызван блок сохранения новой ззадачи в базу");
+            notificationMessageRepository.save(new Notification(data, text, userChatId));
+        }
+        if (data.compareTo(dateTime) < 0) {
+            log.debug("вызван блок изменения даты для отбора сообщений для метода по расписанию");
+            dateTime = data;
         }
     }
 }
-
 
 
 

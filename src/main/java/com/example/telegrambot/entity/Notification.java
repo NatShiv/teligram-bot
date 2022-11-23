@@ -14,9 +14,9 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    String messageNotification;
-    LocalDateTime dataNotification;
-    Long userChatId;
+    private String messageNotification;
+    private LocalDateTime dataNotification;
+    private Long userChatId;
 
     public Notification(LocalDateTime data, String text, Long userChatId) {
         this.dataNotification = data;
