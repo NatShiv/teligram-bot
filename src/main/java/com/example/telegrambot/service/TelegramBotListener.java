@@ -25,8 +25,6 @@ import java.util.regex.Pattern;
 public class TelegramBotListener extends TelegramLongPollingBot {
     private static final Pattern patternForNotification = Pattern.compile("([0-9\\.\\:\\s]{16})(\\s)([\\W+]+)");
     private static final String patternData = "dd.MM.yyyy HH:mm";
-    private static LocalDateTime dateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES);
-
 
     private final TelegramBotConfiguration configuration;
     private final NotificationRepository notificationMessageRepository;
@@ -124,17 +122,13 @@ public class TelegramBotListener extends TelegramLongPollingBot {
 
     @Scheduled(cron = " 0 0/1 * * * *")
     private void sendNotification() {
-        log.debug("Вызван метод по расписанию. Проверяюший время напоминаний в базе.");
-        while (dateTime.compareTo(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)) <= 0) {
-            List<Notification> messages = (notificationMessageRepository.findAllByDataNotification(dateTime));
+        log.debug("Вызван метод по расписанию. Проверяюший напоминаний в базе.");
 
-            for (Notification n : messages) {
-                sendMessage(n.getUserChatId(), n.getMessageNotification());
-                notificationMessageRepository.delete(n);
-            }
+        List<Notification> messages = (notificationMessageRepository.findAllByDataNotification(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES)));
 
-            dateTime = notificationMessageRepository.findMinData()
-                    .orElseGet(() -> LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES).plusDays(1));
+        for (Notification n : messages) {
+            sendMessage(n.getUserChatId(), n.getMessageNotification());
+            notificationMessageRepository.delete(n);
         }
     }
 
@@ -153,12 +147,6 @@ public class TelegramBotListener extends TelegramLongPollingBot {
             log.debug("вызван блок сохранения новой ззадачи в базу");
             notificationMessageRepository.save(new Notification(data, text, userChatId));
         }
-        if (data.compareTo(dateTime) < 0) {
-            log.debug("вызван блок изменения даты для отбора сообщений для метода по расписанию");
-            dateTime = data;
-        }
     }
 }
-
-
 
